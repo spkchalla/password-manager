@@ -80,10 +80,40 @@ pub fn derive_key(master_password: &str, salt:&[u8]) -> [u8; 32]{
 }
 
 
+use aes_gcm::{Aes256Gcm, Nonce};
+use aes_gcm::KeyInit;
+use aes_gcm::aead::Aead;
 
+pub fn encrypt_data(key: &[u8; 32], plaintext: &[u8])->(Vec<u8>, [u8; 12], Vec<u8>) {
+    let cipher = Aes256Gcm::new(key.into());
 
+    // Generate random 12 byte nonce
+    let mut nonce_bytes = [0u8; 12];
+    OsRng.fill_bytes(&mut nonce_bytes);
+    let nonce = Nonce::from_slice(&nonce_bytes);
 
+    // Encrypt
+    let ciphertext = cipher.encrypt(nonce, plaintext)
+        .expect("encryption failed");
 
+    // Aes-Gcm embeds tag in ciphertext internally, so we can seperate if needed.
+    let tag = ciphertext[ciphertext.len()-16..].to_vec(); // this means the last 16 bytes are the tag
+
+    (ciphertext, nonce_bytes, tag)
+
+}
+
+pub fn decrypt_data(key: &[u8; 32], ciphertext: &[u8], nonce: &[u8; 12], _tag: &[u8]) -> Vec<u8> {
+
+    let cipher = Aes256Gcm::new(key.into());
+    let nonce = Nonce::from_slice(nonce);
+
+    // we are assuming ciphertext includes tag in the end
+    let plaintext = cipher.decrypt(nonce, ciphertext)
+        .expect("decryption failed");
+
+    plaintext
+}
 
 
 

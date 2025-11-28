@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 rand = "0.8"
 argon2 = "0.5"
+aes-gcm = "0.10"
