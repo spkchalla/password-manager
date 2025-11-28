@@ -1,6 +1,6 @@
 fn main() {
-    match vault_core::init_vault() {
-        Ok(msg) => println!("{}", msg),
-        Err(e) => eprintln!("Failed to create vault: {}", e),
-    }
+    let loaded = vault_core::load_vault().unwrap();
+
+    println!("Salt: {:?}", loaded.salt);
+    println!("cipher text length: {}", loaded.ciphertext.len());
 }
