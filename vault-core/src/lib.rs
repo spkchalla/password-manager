@@ -1,6 +1,7 @@
 use std::fs::OpenOptions;
 use std::fs::File;
-use std::io::{Read, Write, Result};
+use std::io::{Read, Write, Seek, Result};
+pub mod models;
 
 use rand::rngs::OsRng;
 use rand::RngCore;
@@ -84,7 +85,7 @@ use aes_gcm::{Aes256Gcm, Nonce};
 use aes_gcm::KeyInit;
 use aes_gcm::aead::Aead;
 
-pub fn encrypt_data(key: &[u8; 32], plaintext: &[u8])->(Vec<u8>, [u8; 12], Vec<u8>) {
+pub fn encrypt_data(key: &[u8; 32], plaintext: &[u8])->(Vec<u8>, [u8; 12]) {
     let cipher = Aes256Gcm::new(key.into());
 
     // Generate random 12 byte nonce
@@ -97,13 +98,13 @@ pub fn encrypt_data(key: &[u8; 32], plaintext: &[u8])->(Vec<u8>, [u8; 12], Vec<u
         .expect("encryption failed");
 
     // Aes-Gcm embeds tag in ciphertext internally, so we can seperate if needed.
-    let tag = ciphertext[ciphertext.len()-16..].to_vec(); // this means the last 16 bytes are the tag
+    let _tag = ciphertext[ciphertext.len()-16..].to_vec(); // this means the last 16 bytes are the tag
 
-    (ciphertext, nonce_bytes, tag)
+    (ciphertext, nonce_bytes)
 
 }
 
-pub fn decrypt_data(key: &[u8; 32], ciphertext: &[u8], nonce: &[u8; 12], _tag: &[u8]) -> Vec<u8> {
+pub fn decrypt_data(key: &[u8; 32], ciphertext: &[u8], nonce: &[u8; 12]) -> Vec<u8> {
 
     let cipher = Aes256Gcm::new(key.into());
     let nonce = Nonce::from_slice(nonce);
@@ -115,7 +116,58 @@ pub fn decrypt_data(key: &[u8; 32], ciphertext: &[u8], nonce: &[u8; 12], _tag: &
     plaintext
 }
 
+use crate::models::{Vault};
+use serde_json;
 
+pub fn save_vault(vault: &Vault, key: &[u8; 32]) ->Result<()> {
+
+    //turn vault into json bytes
+    let plaintext = serde_json::to_vec(vault)?;
+
+    //encrypt
+    let (ciphertext, nonce_bytes) = encrypt_data(key, &plaintext);
+
+    //open file
+    let mut file = OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .open("vault.bin")?;
+
+    //write salt already exists from init_vault, so move file ointer past salt
+    file.seek(std::io::SeekFrom::Start(16))?;
+
+    // write nonce + ciphertext
+
+    file.write_all(&nonce_bytes)?;
+    file.write_all(&ciphertext)?;
+
+    Ok(())
+}
+
+
+pub fn load_vault_decrypted(key: &[u8; 32])-> Result<Vault>{
+    let mut file = File::open("vault.bin")?;
+
+    // read salt (16 bytes)
+    let mut salt = [0u8;16];
+    file.read_exact(&mut salt)?;
+
+    // read nonce (12 bytes)
+    let mut nonce_bytes = [0u8; 12];
+    file.read_exact(&mut nonce_bytes)?;
+
+    // read cipher text
+    let mut ciphertext = Vec::new();
+    file.read_to_end(&mut ciphertext)?;
+
+    // decrypt
+    let plaintext = decrypt_data(key, &ciphertext, &nonce_bytes);
+
+    // parse JSON into Vault
+    let vault: Vault = serde_json::from_slice(&plaintext)?;
+
+    Ok(vault)
+}
 
 
 
